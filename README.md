@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/alexei-led-k8s-mcp-server-badge.png)](https://mseep.ai/app/alexei-led-k8s-mcp-server)
+
 # K8s MCP Server
 
 [![CI Status](https://github.com/alexei-led/k8s-mcp-server/actions/workflows/ci.yml/badge.svg)](https://github.com/alexei-led/k8s-mcp-server/actions/workflows/ci.yml)
