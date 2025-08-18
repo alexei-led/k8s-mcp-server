@@ -8,6 +8,8 @@
 [![Python Version](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+[![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/alexei-led/k8s-mcp-server)](https://archestra.ai/mcp-catalog/alexei-led__k8s-mcp-server)
+
 K8s MCP Server is a Docker-based server implementing [Anthropic's Model Context Protocol (MCP)](https://www.anthropic.com/news/introducing-mcp) that enables Claude to run Kubernetes CLI tools (`kubectl`, `istioctl`, `helm`, `argocd`) in a secure, containerized environment.
 
 ## Demo: Deploy and Troubleshoot WordPress
