@@ -87,21 +87,22 @@ def test_sse_deprecation_warning():
 @pytest.mark.unit
 def test_docker_host_detection_for_http_transports():
     """Test that HTTP transports bind to 0.0.0.0 in Docker and 127.0.0.1 otherwise."""
+    from importlib import reload
+
+    import k8s_mcp_server.__main__
+    import k8s_mcp_server.config
+
     with patch("k8s_mcp_server.server.mcp.run"):
         with patch("k8s_mcp_server.server.mcp.settings") as mock_settings:
-            from importlib import reload
-
-            import k8s_mcp_server.__main__
-            import k8s_mcp_server.config
-
             # Test non-Docker: should bind to 127.0.0.1
             with patch.dict(os.environ, {"K8S_MCP_TRANSPORT": "streamable-http"}):
                 reload(k8s_mcp_server.config)
                 reload(k8s_mcp_server.__main__)
 
                 with patch("k8s_mcp_server.config.is_docker_environment", return_value=False):
+                    mock_settings.reset_mock()
                     k8s_mcp_server.__main__.main()
-                    mock_settings.__setattr__("host", "127.0.0.1")
+                    assert mock_settings.host == "127.0.0.1"
 
             # Test Docker: should bind to 0.0.0.0
             with patch.dict(os.environ, {"K8S_MCP_TRANSPORT": "streamable-http"}):
@@ -109,30 +110,29 @@ def test_docker_host_detection_for_http_transports():
                 reload(k8s_mcp_server.__main__)
 
                 with patch("k8s_mcp_server.config.is_docker_environment", return_value=True):
+                    mock_settings.reset_mock()
                     k8s_mcp_server.__main__.main()
-                    mock_settings.__setattr__("host", "0.0.0.0")
+                    assert mock_settings.host == "0.0.0.0"
 
 
 @pytest.mark.unit
 def test_stdio_does_not_set_host():
     """Test that stdio transport does not configure host binding."""
+    from importlib import reload
+
+    import k8s_mcp_server.__main__
+    import k8s_mcp_server.config
+
     with patch("k8s_mcp_server.server.mcp.run"):
         with patch("k8s_mcp_server.server.mcp.settings") as mock_settings:
-            from importlib import reload
-
-            import k8s_mcp_server.__main__
-            import k8s_mcp_server.config
-
             with patch.dict(os.environ, {"K8S_MCP_TRANSPORT": "stdio"}):
                 reload(k8s_mcp_server.config)
                 reload(k8s_mcp_server.__main__)
 
                 mock_settings.reset_mock()
                 k8s_mcp_server.__main__.main()
-                # host should not be set for stdio
-                assert not hasattr(mock_settings, "_mock_children") or "host" not in [
-                    c[0] for c in mock_settings.mock_calls if c[0] == "__setattr__"
-                ]
+                host_set_calls = [c for c in mock_settings.mock_calls if "host" in str(c)]
+                assert len(host_set_calls) == 0, f"host should not be set for stdio, but got: {host_set_calls}"
 
 
 @pytest.mark.unit

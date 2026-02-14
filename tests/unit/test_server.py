@@ -576,3 +576,20 @@ async def test_describe_tool_command_shared_logic():
             result = await _describe_tool_command("helm", "list", None)
             assert result.help_text == "Help text"
             mock_help.assert_called_once_with("helm", "list")
+
+
+@pytest.mark.asyncio
+async def test_describe_tool_command_error_result_raises():
+    """Error results from get_command_help raise CommandExecutionError (isError=true in MCP)."""
+    with patch("k8s_mcp_server.server.cli_status", {"kubectl": True}):
+        from k8s_mcp_server.tools import CommandHelpResult
+
+        error_result = CommandHelpResult(
+            help_text="Command validation error: invalid command",
+            status="error",
+            error={"message": "invalid command", "code": "VALIDATION_ERROR"},
+        )
+        with patch("k8s_mcp_server.server.get_command_help", new_callable=AsyncMock) as mock_help:
+            mock_help.return_value = error_result
+            with pytest.raises(CommandExecutionError, match="Command validation error"):
+                await _describe_tool_command("kubectl", "badcmd", None)

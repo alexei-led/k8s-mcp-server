@@ -16,13 +16,14 @@ def test_valid_transports():
 @pytest.mark.unit
 def test_is_docker_environment_with_dockerenv():
     """Test Docker detection via /.dockerenv file."""
-    with patch("k8s_mcp_server.config.Path") as mock_path_cls:
-        mock_dockerenv = mock_path_cls.return_value
-        mock_dockerenv.exists.return_value = True
-        # Need to handle the Path(__file__) call at module level
-        # So we patch at the function level instead
-    with patch("pathlib.Path.exists") as mock_exists:
-        mock_exists.return_value = True
+    from pathlib import Path
+
+    def custom_exists(self):
+        if str(self) == "/.dockerenv":
+            return True
+        return False
+
+    with patch.object(Path, "exists", custom_exists):
         assert is_docker_environment() is True
 
 

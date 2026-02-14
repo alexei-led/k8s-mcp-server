@@ -185,7 +185,7 @@ LABEL maintainer="Alexei Ledenev" \
       org.opencontainers.image.version="1.3.0" \
       org.opencontainers.image.created="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-# Expose the service port (only needed if using SSE transport)
+# Expose the service port (only needed for HTTP transports: streamable-http or sse)
 EXPOSE 8080
 
 # Set command to run the server with proper signal handling

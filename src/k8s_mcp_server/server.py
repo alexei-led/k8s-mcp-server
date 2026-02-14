@@ -173,8 +173,11 @@ async def _describe_tool_command(tool: str, command: str | None, ctx: Context | 
             await ctx.info(f"Fetching {tool} help for {command or 'general usage'}")
 
         result = await get_command_help(tool, command)
-        if ctx and result.status == "error":
-            await ctx.error(f"Error retrieving {tool} help: {result.help_text}")
+        if result.status == "error":
+            error_msg = result.help_text or f"Error retrieving {tool} help"
+            if ctx:
+                await ctx.error(error_msg)
+            raise CommandExecutionError(error_msg)
         return result
     except Exception as e:
         logger.error(f"Error in describe_{tool}: {e}")
