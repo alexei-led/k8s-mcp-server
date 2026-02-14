@@ -5,7 +5,9 @@ This module contains configuration settings for the K8s MCP Server.
 Environment variables:
 - K8S_MCP_TIMEOUT: Custom timeout in seconds (default: 300)
 - K8S_MCP_MAX_OUTPUT: Maximum output size in characters (default: 100000)
-- K8S_MCP_TRANSPORT: Transport protocol to use ("stdio" or "sse", default: "stdio")
+- K8S_MCP_TRANSPORT: Transport protocol ("stdio", "sse", or "streamable-http", default: "stdio").
+  "streamable-http" is the recommended HTTP transport per MCP spec 2025-11-25.
+  "sse" is deprecated and will be removed in a future release.
 - K8S_CONTEXT: Kubernetes context to use (default: current context)
 - K8S_NAMESPACE: Kubernetes namespace to use (default: "default")
 - K8S_MCP_SECURITY_MODE: Security mode for command validation ("strict", "permissive", default: "strict")
@@ -20,7 +22,7 @@ DEFAULT_TIMEOUT = int(os.environ.get("K8S_MCP_TIMEOUT", "300"))
 MAX_OUTPUT_SIZE = int(os.environ.get("K8S_MCP_MAX_OUTPUT", "100000"))
 
 # Server settings
-MCP_TRANSPORT = os.environ.get("K8S_MCP_TRANSPORT", "stdio")  # Transport protocol: stdio or sse
+MCP_TRANSPORT = os.environ.get("K8S_MCP_TRANSPORT", "stdio")  # Transport: stdio, sse (deprecated), streamable-http
 
 # Kubernetes specific settings
 K8S_CONTEXT = os.environ.get("K8S_CONTEXT", "")  # Empty means use current context
@@ -83,3 +85,24 @@ Use the built-in prompt templates for common Kubernetes tasks:
 
 # Application paths
 BASE_DIR = Path(__file__).parent.parent.parent
+
+# Valid transport protocols
+VALID_TRANSPORTS = {"stdio", "sse", "streamable-http"}
+
+
+def is_docker_environment() -> bool:
+    """Detect if running inside a Docker container.
+
+    Checks for common Docker indicators:
+    - /.dockerenv file (most reliable)
+    - /proc/self/cgroup contains 'docker'
+    """
+    if Path("/.dockerenv").exists():
+        return True
+    try:
+        cgroup_path = Path("/proc/self/cgroup")
+        if cgroup_path.exists():
+            return "docker" in cgroup_path.read_text()
+    except OSError:
+        pass
+    return False

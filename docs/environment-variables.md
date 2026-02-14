@@ -8,7 +8,7 @@ This document details all environment variables that can be configured when runn
 |----------|-------------|---------|----------|
 | `K8S_MCP_TIMEOUT` | Default timeout for commands in seconds | `300` | No |
 | `K8S_MCP_MAX_OUTPUT` | Maximum output size in characters | `100000` | No |
-| `K8S_MCP_TRANSPORT` | Transport protocol to use ("stdio" or "sse") | `stdio` | No |
+| `K8S_MCP_TRANSPORT` | Transport protocol: "stdio", "sse" (deprecated), or "streamable-http" | `stdio` | No |
 | `K8S_CONTEXT` | Kubernetes context to use | *current context* | No |
 | `K8S_NAMESPACE` | Default Kubernetes namespace | `default` | No |
 | `K8S_MCP_SECURITY_MODE` | Security mode ("strict" or "permissive") | `strict` | No |

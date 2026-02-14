@@ -50,10 +50,10 @@ MCP spec says input validation errors should be returned as tool results with `i
 ### Task 4: Add Streamable HTTP transport support (Issue #10)
 MCP spec 2025-11-25 replaces SSE with Streamable HTTP. Add it as the recommended HTTP transport and deprecate SSE.
 
-- [ ] In `__main__.py`, add `streamable-http` as a valid transport option
-- [ ] When `sse` transport is selected, log a deprecation warning suggesting migration to `streamable-http`
-- [ ] Update `config.py` — add documentation for the new transport option
-- [ ] Add Docker host detection logic: bind to `0.0.0.0` when running in Docker, `127.0.0.1` otherwise (check for `/.dockerenv` file or `DOCKER_CONTAINER` env var). Look at aws-mcp-server for reference implementation: `/tmp/aws-mcp-server/src/aws_mcp_server/__main__.py`
-- [ ] Update README.md transport documentation section
-- [ ] Verify FastMCP supports `streamable-http` transport — check mcp package
-- [ ] All tests pass
+- [x] In `__main__.py`, add `streamable-http` as a valid transport option
+- [x] When `sse` transport is selected, log a deprecation warning suggesting migration to `streamable-http`
+- [x] Update `config.py` — add documentation for the new transport option
+- [x] Add Docker host detection logic: bind to `0.0.0.0` when running in Docker, `127.0.0.1` otherwise (check for `/.dockerenv` file or `DOCKER_CONTAINER` env var). Look at aws-mcp-server for reference implementation: `/tmp/aws-mcp-server/src/aws_mcp_server/__main__.py`
+- [x] Update README.md transport documentation section
+- [x] Verify FastMCP supports `streamable-http` transport — check mcp package
+- [x] All tests pass
