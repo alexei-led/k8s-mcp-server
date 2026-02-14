@@ -10,6 +10,7 @@ import logging
 import sys
 
 from mcp.server.fastmcp import Context, FastMCP
+from mcp.types import ToolAnnotations
 from pydantic import Field
 from pydantic.fields import FieldInfo
 
@@ -149,7 +150,7 @@ async def _execute_tool_command(tool: str, command: str, timeout: int | None, ct
 
 
 # Tool-specific command documentation functions
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(title="kubectl Help", readOnlyHint=True))
 async def describe_kubectl(
     command: str | None = Field(description="Specific kubectl command to get help for", default=None),
     ctx: Context | None = None,
@@ -187,7 +188,7 @@ async def describe_kubectl(
         return CommandHelpResult(help_text=f"Error retrieving kubectl help: {str(e)}", status="error", error={"message": str(e), "code": "INTERNAL_ERROR"})
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(title="Helm Help", readOnlyHint=True))
 async def describe_helm(
     command: str | None = Field(description="Specific Helm command to get help for", default=None),
     ctx: Context | None = None,
@@ -225,7 +226,7 @@ async def describe_helm(
         return CommandHelpResult(help_text=f"Error retrieving Helm help: {str(e)}", status="error", error={"message": str(e), "code": "INTERNAL_ERROR"})
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(title="Istio Help", readOnlyHint=True))
 async def describe_istioctl(
     command: str | None = Field(description="Specific Istio command to get help for", default=None),
     ctx: Context | None = None,
@@ -263,7 +264,7 @@ async def describe_istioctl(
         return CommandHelpResult(help_text=f"Error retrieving istioctl help: {str(e)}", status="error", error={"message": str(e), "code": "INTERNAL_ERROR"})
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(title="ArgoCD Help", readOnlyHint=True))
 async def describe_argocd(
     command: str | None = Field(description="Specific ArgoCD command to get help for", default=None),
     ctx: Context | None = None,
@@ -304,6 +305,7 @@ async def describe_argocd(
 # Tool-specific command execution functions
 @mcp.tool(
     description="Execute kubectl commands with support for Unix pipes.",
+    annotations=ToolAnnotations(title="Execute kubectl", destructiveHint=True, openWorldHint=True),
 )
 async def execute_kubectl(
     command: str = Field(description="Complete kubectl command to execute (including any pipes and flags)"),
@@ -339,6 +341,7 @@ async def execute_kubectl(
 
 @mcp.tool(
     description="Execute Helm commands with support for Unix pipes.",
+    annotations=ToolAnnotations(title="Execute Helm", destructiveHint=True, openWorldHint=True),
 )
 async def execute_helm(
     command: str = Field(description="Complete Helm command to execute (including any pipes and flags)"),
@@ -373,6 +376,7 @@ async def execute_helm(
 
 @mcp.tool(
     description="Execute Istio commands with support for Unix pipes.",
+    annotations=ToolAnnotations(title="Execute Istio", destructiveHint=True, openWorldHint=True),
 )
 async def execute_istioctl(
     command: str = Field(description="Complete Istio command to execute (including any pipes and flags)"),
@@ -407,6 +411,7 @@ async def execute_istioctl(
 
 @mcp.tool(
     description="Execute ArgoCD commands with support for Unix pipes.",
+    annotations=ToolAnnotations(title="Execute ArgoCD", destructiveHint=True, openWorldHint=True),
 )
 async def execute_argocd(
     command: str = Field(description="Complete ArgoCD command to execute (including any pipes and flags)"),

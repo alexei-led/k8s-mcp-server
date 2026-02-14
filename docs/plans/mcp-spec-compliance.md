@@ -31,11 +31,11 @@ This is a trivial change. Add `description` parameter to the `FastMCP()` constru
 ### Task 2: Add ToolAnnotations to all tools (Issue #11)
 Add `annotations` parameter with `ToolAnnotations` to each `@mcp.tool()` decorator in `server.py`. There are 8 tools total — 4 describe/help tools (read-only) and 4 execute tools (potentially destructive).
 
-- [ ] Import `ToolAnnotations` from `mcp.types` in `server.py`
-- [ ] Add annotations to all 4 `describe_*` tools: `readOnlyHint=True, title="<Tool> Help"`
-- [ ] Add annotations to all 4 `execute_*` tools: `destructiveHint=True, openWorldHint=True, title="Execute <Tool>"`
-- [ ] Check that `mcp` package version in `pyproject.toml` supports `ToolAnnotations` (needs `mcp>=1.22.0`). Update minimum version if needed.
-- [ ] All tests pass
+- [x] Import `ToolAnnotations` from `mcp.types` in `server.py`
+- [x] Add annotations to all 4 `describe_*` tools: `readOnlyHint=True, title="<Tool> Help"`
+- [x] Add annotations to all 4 `execute_*` tools: `destructiveHint=True, openWorldHint=True, title="Execute <Tool>"`
+- [x] Check that `mcp` package version in `pyproject.toml` supports `ToolAnnotations` (needs `mcp>=1.22.0`). Update minimum version if needed.
+- [x] All tests pass
 
 ### Task 3: Return input validation errors as tool execution errors (Issue #12)
 MCP spec says input validation errors should be returned as tool results with `isError: true`, NOT as JSON-RPC protocol errors. Audit current behavior and fix if needed.
