@@ -40,12 +40,12 @@ Add `annotations` parameter with `ToolAnnotations` to each `@mcp.tool()` decorat
 ### Task 3: Return input validation errors as tool execution errors (Issue #12)
 MCP spec says input validation errors should be returned as tool results with `isError: true`, NOT as JSON-RPC protocol errors. Audit current behavior and fix if needed.
 
-- [ ] Audit how `CommandValidationError` is currently handled in `_execute_tool_command()` — check if the returned result sets `isError=True` at the MCP protocol level
-- [ ] Check how FastMCP handles exceptions raised by tool functions — does it convert them to `isError: true` results or JSON-RPC errors?
-- [ ] If FastMCP does NOT auto-set `isError=True` for our error results, update the tool functions to use the correct FastMCP mechanism (e.g., returning error content with the right type)
-- [ ] Handle Pydantic ValidationError for invalid input types — catch and return as tool error, not protocol error
-- [ ] Add/update unit tests verifying that validation errors produce `isError: true` responses
-- [ ] All tests pass
+- [x] Audit how `CommandValidationError` is currently handled in `_execute_tool_command()` — check if the returned result sets `isError=True` at the MCP protocol level
+- [x] Check how FastMCP handles exceptions raised by tool functions — does it convert them to `isError: true` results or JSON-RPC errors?
+- [x] If FastMCP does NOT auto-set `isError=True` for our error results, update the tool functions to use the correct FastMCP mechanism (e.g., returning error content with the right type)
+- [x] Handle Pydantic ValidationError for invalid input types — catch and return as tool error, not protocol error
+- [x] Add/update unit tests verifying that validation errors produce `isError: true` responses
+- [x] All tests pass
 
 ### Task 4: Add Streamable HTTP transport support (Issue #10)
 MCP spec 2025-11-25 replaces SSE with Streamable HTTP. Add it as the recommended HTTP transport and deprecate SSE.
