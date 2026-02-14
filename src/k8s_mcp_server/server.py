@@ -10,7 +10,8 @@ import logging
 import sys
 
 from mcp.server.fastmcp import Context, FastMCP
-from pydantic import Field
+from mcp.types import ToolAnnotations
+from pydantic import Field, ValidationError
 from pydantic.fields import FieldInfo
 
 from k8s_mcp_server import __version__
@@ -21,11 +22,8 @@ from k8s_mcp_server.cli_executor import (
 )
 from k8s_mcp_server.config import DEFAULT_TIMEOUT, INSTRUCTIONS, SUPPORTED_CLI_TOOLS
 from k8s_mcp_server.errors import (
-    AuthenticationError,
     CommandExecutionError,
-    CommandTimeoutError,
-    CommandValidationError,
-    create_error_result,
+    K8sMCPError,
 )
 from k8s_mcp_server.prompts import register_prompts
 from k8s_mcp_server.tools import CommandHelpResult, CommandResult
@@ -67,9 +65,8 @@ cli_status = run_startup_checks()
 mcp = FastMCP(
     name="K8s MCP Server",
     instructions=INSTRUCTIONS,
-    version=__version__,
-    settings={"cli_status": cli_status},
 )
+mcp._mcp_server.version = __version__
 
 # Register prompt templates
 register_prompts(mcp)
@@ -77,6 +74,8 @@ register_prompts(mcp)
 
 async def _execute_tool_command(tool: str, command: str, timeout: int | None, ctx: Context | None) -> CommandResult:
     """Internal implementation for executing tool commands.
+
+    Raises exceptions for errors so FastMCP returns them with isError=true per MCP spec.
 
     Args:
         tool: The CLI tool name (kubectl, istioctl, helm, argocd)
@@ -86,6 +85,13 @@ async def _execute_tool_command(tool: str, command: str, timeout: int | None, ct
 
     Returns:
         CommandResult containing output and status
+
+    Raises:
+        CommandValidationError: If the command fails validation
+        CommandExecutionError: If the command fails to execute
+        AuthenticationError: If authentication fails
+        CommandTimeoutError: If the command times out
+        ValidationError: If input parameters are invalid
     """
     logger.info(f"Executing {tool} command: {command}" + (f" with timeout: {timeout}" if timeout else ""))
 
@@ -94,7 +100,7 @@ async def _execute_tool_command(tool: str, command: str, timeout: int | None, ct
         message = f"{tool} is not installed or not in PATH"
         if ctx:
             await ctx.error(message)
-        return CommandResult(status="error", output=message)
+        raise CommandExecutionError(message)
 
     # Handle Pydantic Field default for timeout
     actual_timeout = timeout
@@ -121,36 +127,67 @@ async def _execute_tool_command(tool: str, command: str, timeout: int | None, ct
                 await ctx.warning(f"{tool} command failed")
 
         return result
-    except CommandValidationError as e:
-        logger.warning(f"{tool} command validation error: {e}")
+    except K8sMCPError as e:
+        logger.warning(f"{tool} command error ({e.code}): {e}")
         if ctx:
-            await ctx.error(f"Command validation error: {str(e)}")
-        return create_error_result(e, command=command)
-    except CommandExecutionError as e:
-        logger.warning(f"{tool} command execution error: {e}")
+            await ctx.error(f"{e.code}: {str(e)}")
+        raise
+    except ValidationError as e:
+        logger.warning(f"{tool} input validation error: {e}")
         if ctx:
-            await ctx.error(f"Command execution error: {str(e)}")
-        return create_error_result(e, command=command)
-    except AuthenticationError as e:
-        logger.warning(f"{tool} command authentication error: {e}")
-        if ctx:
-            await ctx.error(f"Authentication error: {str(e)}")
-        return create_error_result(e, command=command)
-    except CommandTimeoutError as e:
-        logger.warning(f"{tool} command timeout error: {e}")
-        if ctx:
-            await ctx.error(f"Command timed out: {str(e)}")
-        return create_error_result(e, command=command)
+            await ctx.error(f"Input validation error: {str(e)}")
+        raise
     except Exception as e:
         logger.error(f"Error in execute_{tool}: {e}")
         if ctx:
             await ctx.error(f"Unexpected error: {str(e)}")
-        error = CommandExecutionError(f"Unexpected error: {str(e)}", {"command": command})
-        return create_error_result(error, command=command)
+        raise CommandExecutionError(f"Unexpected error: {str(e)}", {"command": command}) from e
+
+
+async def _describe_tool_command(tool: str, command: str | None, ctx: Context | None) -> CommandHelpResult:
+    """Internal implementation for getting tool command help.
+
+    Raises exceptions for errors so FastMCP returns them with isError=true per MCP spec.
+
+    Args:
+        tool: The CLI tool name (kubectl, istioctl, helm, argocd)
+        command: Specific command to get help for, or None for general help
+        ctx: Optional MCP context for request tracking
+
+    Returns:
+        CommandHelpResult containing the help text
+
+    Raises:
+        CommandExecutionError: If the tool is not installed or help retrieval fails
+    """
+    logger.info(f"Getting {tool} documentation for command: {command or 'None'}")
+
+    if not cli_status.get(tool, False):
+        message = f"{tool} is not installed or not in PATH"
+        if ctx:
+            await ctx.error(message)
+        raise CommandExecutionError(message)
+
+    try:
+        if ctx:
+            await ctx.info(f"Fetching {tool} help for {command or 'general usage'}")
+
+        result = await get_command_help(tool, command)
+        if result.status == "error":
+            error_msg = result.help_text or f"Error retrieving {tool} help"
+            if ctx:
+                await ctx.error(error_msg)
+            raise CommandExecutionError(error_msg)
+        return result
+    except Exception as e:
+        logger.error(f"Error in describe_{tool}: {e}")
+        if ctx:
+            await ctx.error(f"Unexpected error retrieving {tool} help: {str(e)}")
+        raise CommandExecutionError(f"Error retrieving {tool} help: {str(e)}") from e
 
 
 # Tool-specific command documentation functions
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(title="kubectl Help", readOnlyHint=True))
 async def describe_kubectl(
     command: str | None = Field(description="Specific kubectl command to get help for", default=None),
     ctx: Context | None = None,
@@ -163,32 +200,14 @@ async def describe_kubectl(
 
     Returns:
         CommandHelpResult containing the help text
+
+    Raises:
+        CommandExecutionError: If kubectl is not installed or help retrieval fails
     """
-    logger.info(f"Getting kubectl documentation for command: {command or 'None'}")
-
-    # Check if kubectl is installed
-    if not cli_status.get("kubectl", False):
-        message = "kubectl is not installed or not in PATH"
-        if ctx:
-            await ctx.error(message)
-        return CommandHelpResult(help_text=message, status="error")
-
-    try:
-        if ctx:
-            await ctx.info(f"Fetching kubectl help for {command or 'general usage'}")
-
-        result = await get_command_help("kubectl", command)
-        if ctx and result.status == "error":
-            await ctx.error(f"Error retrieving kubectl help: {result.help_text}")
-        return result
-    except Exception as e:
-        logger.error(f"Error in describe_kubectl: {e}")
-        if ctx:
-            await ctx.error(f"Unexpected error retrieving kubectl help: {str(e)}")
-        return CommandHelpResult(help_text=f"Error retrieving kubectl help: {str(e)}", status="error", error={"message": str(e), "code": "INTERNAL_ERROR"})
+    return await _describe_tool_command("kubectl", command, ctx)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(title="Helm Help", readOnlyHint=True))
 async def describe_helm(
     command: str | None = Field(description="Specific Helm command to get help for", default=None),
     ctx: Context | None = None,
@@ -201,32 +220,14 @@ async def describe_helm(
 
     Returns:
         CommandHelpResult containing the help text
+
+    Raises:
+        CommandExecutionError: If helm is not installed or help retrieval fails
     """
-    logger.info(f"Getting Helm documentation for command: {command or 'None'}")
-
-    # Check if Helm is installed
-    if not cli_status.get("helm", False):
-        message = "helm is not installed or not in PATH"
-        if ctx:
-            await ctx.error(message)
-        return CommandHelpResult(help_text=message, status="error")
-
-    try:
-        if ctx:
-            await ctx.info(f"Fetching Helm help for {command or 'general usage'}")
-
-        result = await get_command_help("helm", command)
-        if ctx and result.status == "error":
-            await ctx.error(f"Error retrieving Helm help: {result.help_text}")
-        return result
-    except Exception as e:
-        logger.error(f"Error in describe_helm: {e}")
-        if ctx:
-            await ctx.error(f"Unexpected error retrieving Helm help: {str(e)}")
-        return CommandHelpResult(help_text=f"Error retrieving Helm help: {str(e)}", status="error", error={"message": str(e), "code": "INTERNAL_ERROR"})
+    return await _describe_tool_command("helm", command, ctx)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(title="Istio Help", readOnlyHint=True))
 async def describe_istioctl(
     command: str | None = Field(description="Specific Istio command to get help for", default=None),
     ctx: Context | None = None,
@@ -239,32 +240,14 @@ async def describe_istioctl(
 
     Returns:
         CommandHelpResult containing the help text
+
+    Raises:
+        CommandExecutionError: If istioctl is not installed or help retrieval fails
     """
-    logger.info(f"Getting istioctl documentation for command: {command or 'None'}")
-
-    # Check if istioctl is installed
-    if not cli_status.get("istioctl", False):
-        message = "istioctl is not installed or not in PATH"
-        if ctx:
-            await ctx.error(message)
-        return CommandHelpResult(help_text=message, status="error")
-
-    try:
-        if ctx:
-            await ctx.info(f"Fetching istioctl help for {command or 'general usage'}")
-
-        result = await get_command_help("istioctl", command)
-        if ctx and result.status == "error":
-            await ctx.error(f"Error retrieving istioctl help: {result.help_text}")
-        return result
-    except Exception as e:
-        logger.error(f"Error in describe_istioctl: {e}")
-        if ctx:
-            await ctx.error(f"Unexpected error retrieving istioctl help: {str(e)}")
-        return CommandHelpResult(help_text=f"Error retrieving istioctl help: {str(e)}", status="error", error={"message": str(e), "code": "INTERNAL_ERROR"})
+    return await _describe_tool_command("istioctl", command, ctx)
 
 
-@mcp.tool()
+@mcp.tool(annotations=ToolAnnotations(title="ArgoCD Help", readOnlyHint=True))
 async def describe_argocd(
     command: str | None = Field(description="Specific ArgoCD command to get help for", default=None),
     ctx: Context | None = None,
@@ -277,34 +260,17 @@ async def describe_argocd(
 
     Returns:
         CommandHelpResult containing the help text
+
+    Raises:
+        CommandExecutionError: If argocd is not installed or help retrieval fails
     """
-    logger.info(f"Getting ArgoCD documentation for command: {command or 'None'}")
-
-    # Check if ArgoCD is installed
-    if not cli_status.get("argocd", False):
-        message = "argocd is not installed or not in PATH"
-        if ctx:
-            await ctx.error(message)
-        return CommandHelpResult(help_text=message, status="error")
-
-    try:
-        if ctx:
-            await ctx.info(f"Fetching ArgoCD help for {command or 'general usage'}")
-
-        result = await get_command_help("argocd", command)
-        if ctx and result.status == "error":
-            await ctx.error(f"Error retrieving ArgoCD help: {result.help_text}")
-        return result
-    except Exception as e:
-        logger.error(f"Error in describe_argocd: {e}")
-        if ctx:
-            await ctx.error(f"Unexpected error retrieving ArgoCD help: {str(e)}")
-        return CommandHelpResult(help_text=f"Error retrieving ArgoCD help: {str(e)}", status="error", error={"message": str(e), "code": "INTERNAL_ERROR"})
+    return await _describe_tool_command("argocd", command, ctx)
 
 
 # Tool-specific command execution functions
 @mcp.tool(
     description="Execute kubectl commands with support for Unix pipes.",
+    annotations=ToolAnnotations(title="Execute kubectl", destructiveHint=True, openWorldHint=True),
 )
 async def execute_kubectl(
     command: str = Field(description="Complete kubectl command to execute (including any pipes and flags)"),
@@ -340,6 +306,7 @@ async def execute_kubectl(
 
 @mcp.tool(
     description="Execute Helm commands with support for Unix pipes.",
+    annotations=ToolAnnotations(title="Execute Helm", destructiveHint=True, openWorldHint=True),
 )
 async def execute_helm(
     command: str = Field(description="Complete Helm command to execute (including any pipes and flags)"),
@@ -374,6 +341,7 @@ async def execute_helm(
 
 @mcp.tool(
     description="Execute Istio commands with support for Unix pipes.",
+    annotations=ToolAnnotations(title="Execute Istio", destructiveHint=True, openWorldHint=True),
 )
 async def execute_istioctl(
     command: str = Field(description="Complete Istio command to execute (including any pipes and flags)"),
@@ -408,6 +376,7 @@ async def execute_istioctl(
 
 @mcp.tool(
     description="Execute ArgoCD commands with support for Unix pipes.",
+    annotations=ToolAnnotations(title="Execute ArgoCD", destructiveHint=True, openWorldHint=True),
 )
 async def execute_argocd(
     command: str = Field(description="Complete ArgoCD command to execute (including any pipes and flags)"),

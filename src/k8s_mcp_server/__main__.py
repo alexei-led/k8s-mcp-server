@@ -6,6 +6,7 @@ Running this module will start the K8s MCP Server.
 import logging
 import signal
 import sys
+import warnings
 
 # Configure logging before importing server
 logging.basicConfig(
@@ -30,15 +31,27 @@ def main():
     signal.signal(signal.SIGTERM, handle_interrupt)
     try:
         # Import here to avoid circular imports
-        from k8s_mcp_server.config import MCP_TRANSPORT
+        from k8s_mcp_server.config import MCP_TRANSPORT, VALID_TRANSPORTS, is_docker_environment
         from k8s_mcp_server.server import mcp
 
         # Validate transport protocol
-        if MCP_TRANSPORT not in ["stdio", "sse"]:
-            logger.error(f"Invalid transport protocol: {MCP_TRANSPORT}. Using stdio instead.")
+        if MCP_TRANSPORT not in VALID_TRANSPORTS:
+            logger.error(f"Invalid transport protocol: {MCP_TRANSPORT}. Must be one of: {', '.join(sorted(VALID_TRANSPORTS))}. Using stdio instead.")
             transport = "stdio"
         else:
             transport = MCP_TRANSPORT
+
+        # SSE deprecation warning — recommend streamable-http
+        if transport == "sse":
+            msg = "SSE transport is deprecated per MCP spec 2025-11-25. Use 'streamable-http' instead (K8S_MCP_TRANSPORT=streamable-http)."
+            warnings.warn(msg, DeprecationWarning, stacklevel=2)
+            logger.warning(msg)
+
+        # For HTTP transports, bind to 0.0.0.0 inside Docker (required for port mapping)
+        if transport in ("sse", "streamable-http"):
+            host = "0.0.0.0" if is_docker_environment() else "127.0.0.1"
+            mcp.settings.host = host
+            logger.info(f"HTTP server binding to {host}:{mcp.settings.port}")
 
         # Start the server
         logger.info(f"Starting K8s MCP Server with {transport} transport")

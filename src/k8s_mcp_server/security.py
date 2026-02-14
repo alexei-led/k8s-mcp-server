@@ -124,7 +124,12 @@ def load_security_config() -> SecurityConfig:
 
     if SECURITY_CONFIG_PATH:
         config_path = Path(SECURITY_CONFIG_PATH)
-        if config_path.exists():
+        try:
+            config_exists = config_path.exists()
+        except PermissionError:
+            logger.warning(f"Permission denied checking security config at {config_path}")
+            config_exists = False
+        if config_exists:
             try:
                 with open(config_path) as f:
                     config_data = yaml.safe_load(f)

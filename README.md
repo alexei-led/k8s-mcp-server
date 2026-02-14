@@ -87,6 +87,27 @@ Get Claude helping with your Kubernetes clusters in under 2 minutes:
 - **Command Piping**: Support for common Unix tools like `jq`, `grep`, and `sed`
 - **Easy Configuration**: Simple environment variables for customization
 
+## Transport Protocols
+
+The server supports three transport protocols, configured via `K8S_MCP_TRANSPORT`:
+
+| Transport | Description | Default |
+|-----------|-------------|---------|
+| `stdio` | Standard I/O (Claude Desktop default) | Yes |
+| `streamable-http` | HTTP transport (recommended for remote/web clients, MCP spec 2025-11-25) | No |
+| `sse` | Server-Sent Events (deprecated, use `streamable-http` instead) | No |
+
+Example using Streamable HTTP transport:
+
+```bash
+docker run --rm -p 8000:8000 \
+  -v ~/.kube:/home/appuser/.kube:ro \
+  -e K8S_MCP_TRANSPORT=streamable-http \
+  ghcr.io/alexei-led/k8s-mcp-server:latest
+```
+
+> **Note**: When running in Docker with HTTP transports, the server automatically binds to `0.0.0.0` for proper port mapping. Outside Docker it binds to `127.0.0.1`.
+
 ## Documentation
 
 - [Getting Started Guide](./docs/getting-started.md) - Detailed setup instructions

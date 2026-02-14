@@ -149,7 +149,6 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
 COPY deploy/docker/security_config.yaml ./security_config.yaml
-
 # Copy wheels from builder and install
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir --no-index --find-links=/wheels k8s-mcp-server && \
@@ -158,7 +157,8 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels k8s-mcp-server &&
 # Set ownership after all files have been copied
 RUN chown -R appuser:appgroup /app \
     && chown -R appuser:appgroup /home/appuser \
-    && chmod -R o-rwx /app /home/appuser
+    && chmod -R o-rwx /app /home/appuser \
+    && chmod 644 /app/security_config.yaml
 
 # Switch to non-root user
 USER appuser
@@ -182,10 +182,10 @@ LABEL maintainer="Alexei Ledenev" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/alexei-led/k8s-mcp-server" \
       org.opencontainers.image.documentation="https://github.com/alexei-led/k8s-mcp-server/README.md" \
-      org.opencontainers.image.version="1.3.0" \
+      org.opencontainers.image.version="1.4.0" \
       org.opencontainers.image.created="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-# Expose the service port (only needed if using SSE transport)
+# Expose the service port (only needed for HTTP transports: streamable-http or sse)
 EXPOSE 8080
 
 # Set command to run the server with proper signal handling
