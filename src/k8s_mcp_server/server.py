@@ -67,9 +67,8 @@ cli_status = run_startup_checks()
 mcp = FastMCP(
     name="K8s MCP Server",
     instructions=INSTRUCTIONS,
-    version=__version__,
-    settings={"cli_status": cli_status},
 )
+mcp._mcp_server.version = __version__
 
 # Register prompt templates
 register_prompts(mcp)
