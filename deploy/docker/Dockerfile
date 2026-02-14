@@ -182,7 +182,7 @@ LABEL maintainer="Alexei Ledenev" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.source="https://github.com/alexei-led/k8s-mcp-server" \
       org.opencontainers.image.documentation="https://github.com/alexei-led/k8s-mcp-server/README.md" \
-      org.opencontainers.image.version="1.3.0" \
+      org.opencontainers.image.version="1.4.0" \
       org.opencontainers.image.created="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
 # Expose the service port (only needed for HTTP transports: streamable-http or sse)

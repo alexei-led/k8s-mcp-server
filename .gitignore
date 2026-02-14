@@ -53,3 +53,6 @@ ENV/
 .env
 .envrc
 .aider*
+
+# ralphex progress logs
+progress*.txt
