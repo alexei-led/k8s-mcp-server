@@ -149,7 +149,6 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
 COPY deploy/docker/security_config.yaml ./security_config.yaml
-
 # Copy wheels from builder and install
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir --no-index --find-links=/wheels k8s-mcp-server && \
@@ -158,7 +157,8 @@ RUN pip install --no-cache-dir --no-index --find-links=/wheels k8s-mcp-server &&
 # Set ownership after all files have been copied
 RUN chown -R appuser:appgroup /app \
     && chown -R appuser:appgroup /home/appuser \
-    && chmod -R o-rwx /app /home/appuser
+    && chmod -R o-rwx /app /home/appuser \
+    && chmod 644 /app/security_config.yaml
 
 # Switch to non-root user
 USER appuser
