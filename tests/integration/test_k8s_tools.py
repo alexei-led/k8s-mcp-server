@@ -19,6 +19,7 @@ from typing import Any
 import pytest
 import yaml
 
+from k8s_mcp_server.errors import CommandExecutionError, CommandTimeoutError, CommandValidationError
 from k8s_mcp_server.server import (
     describe_argocd,
     describe_helm,
@@ -470,22 +471,17 @@ async def test_command_execution_edge_cases(ensure_cluster_running, test_namespa
     """Test edge cases in command execution, including timeouts and errors."""
     k8s_context = ensure_cluster_running
 
-    # Test 1: Command with very short timeout
-    # The server catches the timeout exception and returns an error result
-    timeout_result = await execute_kubectl(command=f"get pods --namespace={test_namespace} --watch --context={k8s_context}", timeout=1)
-    assert timeout_result["status"] == "error"
-    assert timeout_result["error"]["code"] == "TIMEOUT_ERROR"
+    # Test 1: Command with very short timeout raises CommandTimeoutError
+    with pytest.raises(CommandTimeoutError):
+        await execute_kubectl(command=f"get pods --namespace={test_namespace} --watch --context={k8s_context}", timeout=1)
 
-    # Test 2: Invalid command
-    invalid_result = await execute_kubectl(command="get invalid-resource-type")
-    assert invalid_result["status"] == "error"
-    assert "error" in invalid_result
-    assert invalid_result["error"]["code"] == "EXECUTION_ERROR"
+    # Test 2: Invalid command raises CommandExecutionError
+    with pytest.raises(CommandExecutionError):
+        await execute_kubectl(command="get invalid-resource-type")
 
-    # Test 3: Command with completely invalid flag (should error)
-    invalid_flag_result = await execute_kubectl(command=f"get pods --invalid-flag=value --context={k8s_context}")
-    assert invalid_flag_result["status"] == "error"
-    assert invalid_flag_result["error"]["code"] == "EXECUTION_ERROR"
+    # Test 3: Command with completely invalid flag raises CommandExecutionError
+    with pytest.raises(CommandExecutionError):
+        await execute_kubectl(command=f"get pods --invalid-flag=value --context={k8s_context}")
 
     # Note: We don't test non-existent namespaces because KWOK/KIND clusters
     # often just return an empty list for non-existent namespaces (success with empty output)
@@ -613,10 +609,12 @@ async def test_helm_commands(ensure_cluster_running):
     list_result = await execute_helm(command=f"list --kube-context={k8s_context}")
     assert list_result["status"] == "success"
 
-    # Test Helm search
-    search_result = await execute_helm(command=f"search repo stable --kube-context={k8s_context}")
-    # We don't assert on content since search results depend on repository configuration
-    assert "status" in search_result
+    # Test Helm search (tolerant of missing repo config — search may fail if no repos added)
+    try:
+        search_result = await execute_helm(command=f"search repo stable --kube-context={k8s_context}")
+        assert "status" in search_result
+    except CommandExecutionError:
+        pass  # Expected if no stable repo is configured
 
 
 @pytest.mark.integration
@@ -672,16 +670,25 @@ async def test_security_permissive_mode(ensure_cluster_running, test_namespace, 
 
     reload_security_config()  # Reload config to apply new security mode
 
-    # These commands would normally be rejected in strict mode
-    # Delete all command would be rejected by regex pattern
-    result1 = await execute_kubectl(command=f"delete pods --all -n {test_namespace}")
-    # This command may fail with errors like "no resources found" which is expected
-    # We just want to ensure it's not rejected for security reasons
-    assert "validation error" not in result1["output"].lower()
+    # These commands would normally be rejected in strict mode.
+    # In permissive mode they should NOT raise CommandValidationError —
+    # they may raise CommandExecutionError if kubectl itself rejects them.
 
-    # Global delete command would be rejected by dangerous command prefix
-    result2 = await execute_kubectl(command=f"delete -n {test_namespace}")
-    assert "validation error" not in result2["output"].lower()
+    # Delete all — security validation should pass in permissive mode
+    try:
+        await execute_kubectl(command=f"delete pods --all -n {test_namespace}")
+    except CommandValidationError:
+        pytest.fail("CommandValidationError should not be raised in permissive mode")
+    except CommandExecutionError:
+        pass  # kubectl may fail (no resources), but that's OK
+
+    # Global delete without resource type — security allows it in permissive mode
+    try:
+        await execute_kubectl(command=f"delete -n {test_namespace}")
+    except CommandValidationError:
+        pytest.fail("CommandValidationError should not be raised in permissive mode")
+    except CommandExecutionError:
+        pass  # kubectl will reject invalid syntax, but that's OK
 
     # Reset security mode after test
     monkeypatch.setenv("K8S_MCP_SECURITY_MODE", "strict")
@@ -699,17 +706,17 @@ async def test_security_strict_mode(ensure_cluster_running, test_namespace, monk
 
     reload_security_config()
 
-    # Test dangerous commands in strict mode - they should be rejected
+    # Test dangerous commands in strict mode - they should raise CommandValidationError
 
-    # Test dangerous command prefix - test by examining the error response
-    result1 = await execute_kubectl(command=f"delete -n {test_namespace}")
-    assert result1["status"] == "error"
-    assert "restricted" in result1["output"].lower() or "restricted" in result1.get("error", {}).get("message", "").lower()
+    # Test dangerous command prefix - should be blocked by security validation
+    with pytest.raises(CommandValidationError, match="restricted"):
+        await execute_kubectl(command=f"delete -n {test_namespace}")
 
-    # Test dangerous operation with --all flag (which is now explicitly listed as dangerous)
-    await execute_kubectl(command=f"delete pods --all -n {test_namespace}")
-    # Could be "error" or could pass in KWOK - depends on the implementation details
-    # The important thing is to check that more specific operations work
+    # Test dangerous operation with --all flag - should be blocked by regex rules
+    try:
+        await execute_kubectl(command=f"delete pods --all -n {test_namespace}")
+    except (CommandValidationError, CommandExecutionError):
+        pass  # Either security block or kubectl error is acceptable
 
     # Create a test pod first to test exec later - we need to use a specific pod name
     pod_name = f"test-pod-{uuid.uuid4().hex[:8]}"
@@ -733,10 +740,9 @@ async def test_security_strict_mode(ensure_cluster_running, test_namespace, monk
     # Wait briefly for the pod to be known to the API
     time.sleep(2)
 
-    # Test dangerous exec command - should be rejected
-    result3 = await execute_kubectl(command=f"exec {pod_name} -n {test_namespace} -- /bin/sh")
-    assert result3["status"] == "error"
-    assert "restricted" in result3["output"].lower() or "interactive" in result3["output"].lower()
+    # Test dangerous exec command - should raise CommandValidationError (restricted interactive shell)
+    with pytest.raises(CommandValidationError):
+        await execute_kubectl(command=f"exec {pod_name} -n {test_namespace} -- /bin/sh")
 
     # Test that allowed commands still work
     result4 = await execute_kubectl(command=f"get pods -n {test_namespace}")
