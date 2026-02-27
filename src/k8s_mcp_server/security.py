@@ -6,6 +6,7 @@ and pipe command validation.
 """
 
 import logging
+import os
 import re
 import shlex
 from dataclasses import dataclass
@@ -331,13 +332,15 @@ def validate_pipe_command(pipe_command: str) -> None:
 
 
 def reload_security_config() -> None:
-    """Reload security configuration from file.
+    """Reload security configuration from file and re-read security mode from environment.
 
     This allows for dynamic reloading of security rules without restarting the server.
+    Call this after changing K8S_MCP_SECURITY_MODE or K8S_MCP_SECURITY_CONFIG environment variables.
     """
-    global SECURITY_CONFIG
+    global SECURITY_CONFIG, SECURITY_MODE
     SECURITY_CONFIG = load_security_config()
-    logger.info("Security configuration reloaded")
+    SECURITY_MODE = os.environ.get("K8S_MCP_SECURITY_MODE", "strict")
+    logger.info(f"Security configuration reloaded (mode: {SECURITY_MODE})")
 
 
 def validate_command(command: str) -> None:
