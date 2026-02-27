@@ -10,7 +10,7 @@ import logging
 import sys
 
 from mcp.server.fastmcp import Context, FastMCP
-from mcp.types import ToolAnnotations
+from mcp.types import Icon, ToolAnnotations
 from pydantic import Field, ValidationError
 from pydantic.fields import FieldInfo
 
@@ -29,6 +29,15 @@ from k8s_mcp_server.prompts import register_prompts
 from k8s_mcp_server.tools import CommandHelpResult, CommandResult
 
 logger = logging.getLogger(__name__)
+
+# Tool icon URLs (CNCF artwork, SVG format)
+_CNCF = "https://raw.githubusercontent.com/cncf/artwork/main/projects"
+_ICONS: dict[str, list[Icon]] = {
+    "kubectl": [Icon(src=f"{_CNCF}/kubernetes/icon/color/kubernetes-icon-color.svg", mimeType="image/svg+xml")],
+    "helm": [Icon(src=f"{_CNCF}/helm/icon/color/helm-icon-color.svg", mimeType="image/svg+xml")],
+    "istioctl": [Icon(src=f"{_CNCF}/istio/icon/color/istio-icon-color.svg", mimeType="image/svg+xml")],
+    "argocd": [Icon(src=f"{_CNCF}/argo/icon/color/argo-icon-color.svg", mimeType="image/svg+xml")],
+}
 
 
 # Function to run startup checks in synchronous context
@@ -187,7 +196,7 @@ async def _describe_tool_command(tool: str, command: str | None, ctx: Context | 
 
 
 # Tool-specific command documentation functions
-@mcp.tool(annotations=ToolAnnotations(title="kubectl Help", readOnlyHint=True))
+@mcp.tool(annotations=ToolAnnotations(title="kubectl Help", readOnlyHint=True), icons=_ICONS["kubectl"])
 async def describe_kubectl(
     command: str | None = Field(description="Specific kubectl command to get help for", default=None),
     ctx: Context | None = None,
@@ -207,7 +216,7 @@ async def describe_kubectl(
     return await _describe_tool_command("kubectl", command, ctx)
 
 
-@mcp.tool(annotations=ToolAnnotations(title="Helm Help", readOnlyHint=True))
+@mcp.tool(annotations=ToolAnnotations(title="Helm Help", readOnlyHint=True), icons=_ICONS["helm"])
 async def describe_helm(
     command: str | None = Field(description="Specific Helm command to get help for", default=None),
     ctx: Context | None = None,
@@ -227,7 +236,7 @@ async def describe_helm(
     return await _describe_tool_command("helm", command, ctx)
 
 
-@mcp.tool(annotations=ToolAnnotations(title="Istio Help", readOnlyHint=True))
+@mcp.tool(annotations=ToolAnnotations(title="Istio Help", readOnlyHint=True), icons=_ICONS["istioctl"])
 async def describe_istioctl(
     command: str | None = Field(description="Specific Istio command to get help for", default=None),
     ctx: Context | None = None,
@@ -247,7 +256,7 @@ async def describe_istioctl(
     return await _describe_tool_command("istioctl", command, ctx)
 
 
-@mcp.tool(annotations=ToolAnnotations(title="ArgoCD Help", readOnlyHint=True))
+@mcp.tool(annotations=ToolAnnotations(title="ArgoCD Help", readOnlyHint=True), icons=_ICONS["argocd"])
 async def describe_argocd(
     command: str | None = Field(description="Specific ArgoCD command to get help for", default=None),
     ctx: Context | None = None,
@@ -271,6 +280,7 @@ async def describe_argocd(
 @mcp.tool(
     description="Execute kubectl commands with support for Unix pipes.",
     annotations=ToolAnnotations(title="Execute kubectl", destructiveHint=True, openWorldHint=True),
+    icons=_ICONS["kubectl"],
 )
 async def execute_kubectl(
     command: str = Field(description="Complete kubectl command to execute (including any pipes and flags)"),
@@ -307,6 +317,7 @@ async def execute_kubectl(
 @mcp.tool(
     description="Execute Helm commands with support for Unix pipes.",
     annotations=ToolAnnotations(title="Execute Helm", destructiveHint=True, openWorldHint=True),
+    icons=_ICONS["helm"],
 )
 async def execute_helm(
     command: str = Field(description="Complete Helm command to execute (including any pipes and flags)"),
@@ -342,6 +353,7 @@ async def execute_helm(
 @mcp.tool(
     description="Execute Istio commands with support for Unix pipes.",
     annotations=ToolAnnotations(title="Execute Istio", destructiveHint=True, openWorldHint=True),
+    icons=_ICONS["istioctl"],
 )
 async def execute_istioctl(
     command: str = Field(description="Complete Istio command to execute (including any pipes and flags)"),
@@ -377,6 +389,7 @@ async def execute_istioctl(
 @mcp.tool(
     description="Execute ArgoCD commands with support for Unix pipes.",
     annotations=ToolAnnotations(title="Execute ArgoCD", destructiveHint=True, openWorldHint=True),
+    icons=_ICONS["argocd"],
 )
 async def execute_argocd(
     command: str = Field(description="Complete ArgoCD command to execute (including any pipes and flags)"),
