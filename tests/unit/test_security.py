@@ -1,7 +1,7 @@
 """Tests for the security module."""
 
 import os
-from unittest.mock import MagicMock, mock_open, patch
+from unittest.mock import mock_open, patch
 
 import pytest
 import yaml
@@ -188,15 +188,9 @@ def test_validate_k8s_command_with_mocked_regex_rules():
                 ]
             },
         ):
-            with patch("re.compile") as mock_re_compile:
-                # Set up the mock to return a pattern that will match
-                mock_pattern = MagicMock()
-                mock_pattern.search.return_value = True  # This will trigger the ValueError
-                mock_re_compile.return_value = mock_pattern
-
-                # This should raise an error due to our mocked regex match
-                with pytest.raises(ValueError, match="Cannot delete all resources"):
-                    validate_k8s_command("kubectl delete pods --all")
+            # Use a command that actually matches the regex pattern - no mock needed
+            with pytest.raises(ValueError, match="Cannot delete all resources"):
+                validate_k8s_command("kubectl delete --all")
 
         # Clean pass with no regex rules
         with patch("k8s_mcp_server.security.SECURITY_CONFIG.regex_rules", {}):
