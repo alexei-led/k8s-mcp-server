@@ -1,0 +1,38 @@
+# K8s MCP Server
+
+> MCP server for Kubernetes CLI tools — kubectl, Helm, istioctl, and ArgoCD — with security policies and Unix pipe support.
+
+K8s MCP Server implements the Model Context Protocol (MCP) to bridge AI assistants with Kubernetes CLI tools. It provides execute and help tools for kubectl, Helm, istioctl, and ArgoCD, with built-in command validation, security policies, and structured error handling.
+
+## Docs
+
+- [README](https://github.com/alexei-led/k8s-mcp-server/blob/master/README.md): Full documentation, installation, configuration
+- [Development Guide](https://github.com/alexei-led/k8s-mcp-server/blob/master/CLAUDE.md): Build commands, code style, development patterns
+- [Architecture](https://github.com/alexei-led/k8s-mcp-server/blob/master/docs/architecture.md): Detailed architecture description
+- [Security](https://github.com/alexei-led/k8s-mcp-server/blob/master/docs/security.md): Security model and policies
+- [Environment Variables](https://github.com/alexei-led/k8s-mcp-server/blob/master/docs/environment-variables.md): Configuration reference
+
+## Architecture
+
+- **Transport:** stdio (default), SSE, and Streamable HTTP
+- **Tools (8):** 4 execute tools + 4 describe/help tools for kubectl, helm, istioctl, argocd
+- **Prompts:** K8s troubleshooting, Helm chart, Istio mesh, ArgoCD deployment templates
+- **Security:** Command validation, blocked patterns (no exec into pods, no delete without resource name)
+- **Errors:** Structured error types — ValidationError, ExecutionError, AuthError, TimeoutError
+- **Stack:** Python 3.13+, FastMCP, mcp SDK, ruff linter, pytest
+
+## API
+
+### Execute Tools
+
+- `execute_kubectl(command, timeout?)` — Run kubectl with pipes, validation, security checks
+- `execute_helm(command, timeout?)` — Run Helm commands
+- `execute_istioctl(command, timeout?)` — Run istioctl commands
+- `execute_argocd(command, timeout?)` — Run ArgoCD commands
+
+### Help Tools
+
+- `describe_kubectl(command?)` — kubectl documentation
+- `describe_helm(command?)` — Helm documentation
+- `describe_istioctl(command?)` — istioctl documentation
+- `describe_argocd(command?)` — ArgoCD documentation

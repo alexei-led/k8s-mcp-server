@@ -1,69 +1,105 @@
-# K8s MCP Server Development Guide
+# K8s MCP Server — Development Guide
 
 ## Build & Test Commands
 
-- Install dependencies: `uv pip install -e .` (or use `make install`)
-- Install dev dependencies: `uv pip install -e ".[dev]"` (or use `make dev-install`)
-- Run server: `python -m k8s_mcp_server`
-- Run unit tests only (default): `pytest` (or use `make test`)
-- Run all tests (including integration): `pytest -o addopts=""` (or use `make test-all`)
-- Run unit tests explicitly: `pytest -m unit` (or use `make test-unit`)
-- Run integration tests only: `pytest -m integration` (or use `make test-integration`)
-- Run single test: `pytest tests/path/to/test_file.py::test_function_name -v`
-- Run linter: `ruff check src/ tests/` (or use `make lint`)
-- Format code: `ruff format src/ tests/` (or use `make format`)
+```bash
+make install           # Install dependencies
+make dev-install       # Install with dev deps
+make test              # Unit tests only (default)
+make test-all          # All tests (incl. integration)
+make test-integration  # Integration tests (needs kubectl + cluster)
+make lint              # ruff check src/ tests/
+make format            # ruff format src/ tests/
+```
 
-## Technical Stack
+Direct commands:
 
-- **Python version**: Python 3.13+
-- **Package management**: `uv` for fast, reliable package management
-- **Project config**: `pyproject.toml` for configuration and dependency management
-- **Environment**: Use virtual environment in `.venv` for dependency isolation
-- **Dependencies**: Separate production and dev dependencies in `pyproject.toml`
-- **Linting**: `ruff` for style and error checking
-- **Type checking**: Use VS Code with Pylance for static type checking
-- **Project layout**: Organize code with `src/` layout
+```bash
+uv run pytest -q tests/unit/   # Fast unit tests
+uvx ruff check src/ tests/     # Lint
+python -m k8s_mcp_server        # Run server locally
+```
 
-## Code Style Guidelines
+## Architecture
 
-- **Formatting**: Black-compatible formatting via `ruff format` with 120 char line length
-- **Imports**: Sort imports with `ruff` (stdlib, third-party, local)
-- **Type hints**: Use native Python type hints (e.g., `list[str]` not `List[str]`)
-- **Documentation**: Google-style docstrings for all modules, classes, functions
-- **Naming**: snake_case for variables/functions, PascalCase for classes
-- **Function length**: Keep functions short (< 30 lines) and single-purpose
-- **PEP 8**: Follow PEP 8 style guide (enforced via `ruff`)
+### Server (`src/k8s_mcp_server/server.py`)
 
-## Python Best Practices
+- 8 tools: 4 `execute_*` + 4 `describe_*`, all delegating to `_execute_tool_command()` / `_describe_tool_command()`
+- CLI status checked at startup — tools gracefully error if CLI not installed
+- Uses `FieldInfo` workaround for Pydantic Field defaults in timeout parameter
+- `ToolAnnotations`: `readOnlyHint=True` for describe tools, `destructiveHint=True, openWorldHint=True` for execute tools
 
-- **File handling**: Prefer `pathlib.Path` over `os.path`
-- **Debugging**: Use `logging` module instead of `print`
-- **Error handling**: Use specific exceptions with context messages and proper logging
-- **Data structures**: Use list/dict comprehensions for concise, readable code
-- **Function arguments**: Avoid mutable default arguments
-- **Data containers**: Leverage `dataclasses` to reduce boilerplate
-- **Configuration**: Use environment variables for configuration
-- **K8s validation**: Validate all commands before execution (must start with allowed prefixes)
-- **Security**: Never store/log credentials, set command timeouts
+### Security (`src/k8s_mcp_server/security.py`)
 
-## Development Patterns & Best Practices
+- `validate_command()` — blocked patterns, required resource names for destructive ops
+- `kubectl exec` restrictions (no interactive shells)
+- Per-tool security rules validated before execution
 
-- **Favor simplicity**: Choose the simplest solution that meets requirements
-- **DRY principle**: Avoid code duplication; reuse existing functionality
-- **Configuration management**: Use environment variables for different environments
-- **Focused changes**: Only implement explicitly requested or fully understood changes
-- **Preserve patterns**: Follow existing code patterns when fixing bugs
-- **File size**: Keep files under 300 lines; refactor when exceeding this limit
-- **Test coverage**: Write comprehensive unit and integration tests with `pytest`; include fixtures
-- **Modular design**: Create reusable, modular components
-- **Logging**: Implement appropriate logging levels (debug, info, error)
-- **Error handling**: Implement robust error handling for production reliability
-- **Security best practices**: Follow input validation and data protection practices
-- **Performance**: Optimize critical code sections when necessary
-- **Dependency management**: Add libraries only when essential
+### Errors (`src/k8s_mcp_server/errors.py`)
 
-## Development Workflow
+- Hierarchy: `K8sMCPError` → `CommandValidationError`, `CommandExecutionError`, `AuthenticationError`, `CommandTimeoutError`
+- `create_error_result()` produces structured `CommandResult` with `ErrorDetails`
+- Errors returned as tool results with `isError=true` (MCP spec compliant), not as JSON-RPC errors
 
-- **Version control**: Commit frequently with clear messages
-- **Impact assessment**: Evaluate how changes affect other codebase areas
-- **Documentation**: Keep documentation up-to-date for complex logic and features
+### CLI Executor (`src/k8s_mcp_server/cli_executor.py`)
+
+- `execute_command()` — asyncio subprocess, pipe support (`|` splitting), timeout
+- `get_command_help()` — fetches `--help` output
+- `check_cli_installed()` — startup validation
+
+### Tools (`src/k8s_mcp_server/tools.py`)
+
+- `CommandResult`: status, output, error (optional `ErrorDetails`), exit_code
+- `CommandHelpResult`: help_text, status, error
+
+### Config (`src/k8s_mcp_server/config.py`)
+
+- `SUPPORTED_CLI_TOOLS = ["kubectl", "helm", "istioctl", "argocd"]`
+- `MCP_TRANSPORT` env var: `stdio` (default), `sse`, `streamable-http`
+- `DEFAULT_TIMEOUT = 300` seconds
+- `INSTRUCTIONS` — system prompt for the MCP server
+
+## Testing Patterns
+
+- **Unit tests:** mock `asyncio.create_subprocess_exec`, fixtures in `conftest.py`
+- **Integration:** requires real kubectl + cluster — skip with `pytest -m "not integration"`
+- **Security tests:** `tests/unit/test_security.py` — covers all blocked commands
+- **Error tests:** each error type has structured output assertion
+
+## MCP Development Guidelines
+
+### Adding a New CLI Tool (step-by-step)
+
+1. Add tool name to `SUPPORTED_CLI_TOOLS` in `config.py`
+2. Add `execute_<tool>()` in `server.py` — follow existing pattern, delegate to `_execute_tool_command()`
+3. Add `describe_<tool>()` in `server.py` — follow existing help pattern
+4. Add `ToolAnnotations` to both functions
+5. Add security rules in `security.py` if needed
+6. Add prompt templates in `prompts.py`
+7. Add unit tests for both new tools
+8. Update README
+
+### Error Handling Pattern
+
+- Catch `CommandValidationError`, `CommandExecutionError` etc. — return via `create_error_result()`
+- Never raise protocol errors for input validation issues
+- All tool functions accept `ctx: Context | None = None`
+
+### Field Descriptions
+
+- Use `pydantic.Field(description=...)` for schema generation in tool parameters
+
+## Code Style
+
+- **Line length:** 120 chars
+- **Imports:** sorted by ruff (stdlib → third-party → local)
+- **Type hints:** native Python (`list[str]`, not `List[str]`)
+- **Docstrings:** Google-style for all public functions
+- **Naming:** snake_case for functions/variables, PascalCase for classes
+
+## Important
+
+- **Default branch:** `master` (not main!)
+- **Workflow:** branch → PR → CI green → squash merge
+- **NEVER push directly to `master`**
+- **Git commits:** do NOT add AI co-author trailers

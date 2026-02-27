@@ -12,8 +12,16 @@ on:
       - '*.md'
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+
+    runs-on: ${{ matrix.runner }}
     if: "!contains(github.event.head_commit.message, '[ci skip]') && !contains(github.event.head_commit.message, '[skip ci]')"
 
     permissions:
@@ -30,21 +38,16 @@ jobs:
 
       - name: Install uv
         run: |
-          # Install uv using the official installation method
           curl -LsSf https://astral.sh/uv/install.sh | sh
-            
-          # Add uv to PATH
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
       - name: Install dependencies and run tests
         run: |
-          # Install dependencies using uv with the lock file and the --system flag
           uv pip install --system -e ".[dev]"
-          # Run linting and tests to verify before release
           ruff check .
           ruff format --check .
           pytest -v -k "not integration"
-          
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
@@ -52,6 +55,77 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
           verbose: true
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push platform image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./deploy/docker/Dockerfile
+          push: true
+          build-args: |
+            PYTHON_VERSION=3.13-slim
+            KUBECTL_VERSION=v1.33.0
+            HELM_VERSION=v3.17.3
+            ISTIO_VERSION=1.25.2
+            ARGOCD_VERSION=v2.14.11
+            AWS_CLI_VERSION=1.32.0
+            GCLOUD_VERSION=519.0.0
+            AZURE_CLI_VERSION=2.71.0
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ghcr.io/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  push:
+    runs-on: ubuntu-latest
+    needs: [build]
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -75,23 +149,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push multi-architecture Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./deploy/docker/Dockerfile
-          push: true
-          build-args: |
-            PYTHON_VERSION=3.13-slim
-            KUBECTL_VERSION=v1.33.0
-            HELM_VERSION=v3.17.3
-            ISTIO_VERSION=1.25.2
-            ARGOCD_VERSION=v2.14.11
-            AWS_CLI_VERSION=1.32.0
-            GCLOUD_VERSION=519.0.0
-            AZURE_CLI_VERSION=2.71.0
-          platforms: linux/amd64,linux/arm64
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Create and push multi-platform manifest
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf 'ghcr.io/${{ github.repository }}@sha256:%s ' *)
+        env:
+          DOCKER_METADATA_OUTPUT_JSON: ${{ steps.meta.outputs.json }}
