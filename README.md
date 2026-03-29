@@ -37,6 +37,10 @@ Claude can help users by:
 - Suggesting optimizations
 - Crafting Kubernetes manifests
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/alexei-led-k8s-mcp-server).
+
 ## Quick Start with Claude Desktop
 
 Get Claude helping with your Kubernetes clusters in under 2 minutes:
